@@ -1,0 +1,4 @@
+﻿  server.cpp
+G:\code\computerNetwork\wbf实验一\Project1\server.cpp(15,50): warning C4267: “参数”: 从“size_t”转换到“int”，可能丢失数据
+G:\code\computerNetwork\wbf实验一\Project1\server.cpp(80,29): warning C4996: 'inet_addr': Use inet_pton() or InetPton() instead or define _WINSOCK_DEPRECATED_NO_WARNINGS to disable deprecated API warnings
+  Project1.vcxproj -> G:\code\computerNetwork\wbf实验一\Project1\x64\Debug\Project1.exe
