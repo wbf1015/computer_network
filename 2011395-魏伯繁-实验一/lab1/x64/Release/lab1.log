@@ -1,0 +1,8 @@
+﻿  server.cpp
+G:\code\computerNetwork\2011395-魏伯繁-实验一\lab1\server.cpp(181,6): warning C4101: “sflag”: 未引用的局部变量
+  正在生成代码
+  Previous IPDB not found, fall back to full compilation.
+G:\code\computerNetwork\2011395-魏伯繁-实验一\lab1\server.cpp(127): warning C4715: “getNewName”: 不是所有的控件路径都返回值
+  All 632 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  已完成代码的生成
+  lab1.vcxproj -> G:\code\computerNetwork\2011395-魏伯繁-实验一\lab1\x64\Release\lab1.exe

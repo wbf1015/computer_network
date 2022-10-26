@@ -1,2 +1,7 @@
 ﻿  server.cpp
+G:\code\computerNetwork\2011395-魏伯繁-实验一\lab1\server.cpp(333,22): warning C4018: “<”: 有符号/无符号不匹配
+G:\code\computerNetwork\2011395-魏伯繁-实验一\lab1\server.cpp(214,6): warning C4101: “sflag”: 未引用的局部变量
+G:\code\computerNetwork\2011395-魏伯繁-实验一\lab1\server.cpp(160): warning C4715: “getMessage”: 不是所有的控件路径都返回值
+G:\code\computerNetwork\2011395-魏伯繁-实验一\lab1\server.cpp(135): warning C4715: “getNewName”: 不是所有的控件路径都返回值
+G:\code\computerNetwork\2011395-魏伯繁-实验一\lab1\server.cpp(144): warning C4715: “toSend”: 不是所有的控件路径都返回值
   lab1.vcxproj -> G:\code\computerNetwork\2011395-魏伯繁-实验一\lab1\Debug\lab1.exe
