@@ -1,0 +1,12 @@
+﻿  server.cpp
+G:\code\computerNetwork\大作业\3-1\Project3\define.h(35,9): warning C4244: “return”: 从“unsigned long”转换到“unsigned short”，可能丢失数据
+G:\code\computerNetwork\大作业\3-1\Project3\server.cpp(126,14): warning C4805: “==”: 在操作中将类型“BOOL”与类型“bool”混合不安全
+G:\code\computerNetwork\大作业\3-1\Project3\server.cpp(128,19): warning C4244: “=”: 从“float”转换到“int”，可能丢失数据
+G:\code\computerNetwork\大作业\3-1\Project3\server.cpp(157,60): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
+G:\code\computerNetwork\大作业\3-1\Project3\server.cpp(186,21): warning C4244: “=”: 从“float”转换到“int”，可能丢失数据
+G:\code\computerNetwork\大作业\3-1\Project3\server.cpp(187,21): warning C4244: “=”: 从“int”转换到“float”，可能丢失数据
+G:\code\computerNetwork\大作业\3-1\Project3\server.cpp(194,60): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
+G:\code\computerNetwork\大作业\3-1\Project3\server.cpp(237,14): warning C4244: “初始化”: 从“std::streamoff”转换到“int”，可能丢失数据
+G:\code\computerNetwork\大作业\3-1\Project3\server.cpp(305,35): warning C4267: “=”: 从“size_t”转换到“unsigned short”，可能丢失数据
+G:\code\computerNetwork\大作业\3-1\Project3\server.cpp(326,67): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
+  Project3.vcxproj -> G:\code\computerNetwork\大作业\3-1\Project3\Debug\Project3.exe

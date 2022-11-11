@@ -1,0 +1,4 @@
+﻿  client.cpp
+G:\code\computerNetwork\大作业\3-1\Project2\client.cpp(335,12): warning C4244: “初始化”: 从“std::streamoff”转换到“int”，可能丢失数据
+G:\code\computerNetwork\大作业\3-1\Project2\client.cpp(364,19): warning C4244: “初始化”: 从“double”转换到“int”，可能丢失数据
+  Project2.vcxproj -> G:\code\computerNetwork\大作业\3-1\Project2\Debug\Project2.exe

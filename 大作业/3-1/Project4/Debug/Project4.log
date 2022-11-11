@@ -1,0 +1,6 @@
+﻿  client.cpp
+G:\code\computerNetwork\大作业\3-1\Project4\define.h(36,9): warning C4244: “return”: 从“unsigned long”转换到“unsigned short”，可能丢失数据
+G:\code\computerNetwork\大作业\3-1\Project4\define.h(59,13): warning C4244: “=”: 从“__int64”转换到“unsigned int”，可能丢失数据
+G:\code\computerNetwork\大作业\3-1\Project4\client.cpp(74,29): warning C4305: “初始化”: 从“double”到“float”截断
+G:\code\computerNetwork\大作业\3-1\Project4\client.cpp(75,26): warning C4305: “初始化”: 从“double”到“float”截断
+  Project4.vcxproj -> G:\code\computerNetwork\大作业\3-1\Project4\Debug\Project4.exe

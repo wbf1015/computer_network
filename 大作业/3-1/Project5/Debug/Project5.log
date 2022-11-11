@@ -1,0 +1,4 @@
+﻿  server.cpp
+G:\code\computerNetwork\大作业\3-1\Project5\server.cpp(94,27): warning C4244: “=”: 从“u_short”转换到“unsigned char”，可能丢失数据
+G:\code\computerNetwork\大作业\3-1\Project5\server.cpp(233,27): warning C4244: “=”: 从“u_short”转换到“unsigned char”，可能丢失数据
+  Project5.vcxproj -> G:\code\computerNetwork\大作业\3-1\Project5\Debug\Project5.exe

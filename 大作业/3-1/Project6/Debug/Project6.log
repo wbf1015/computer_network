@@ -1,0 +1,4 @@
+﻿  client.cpp
+G:\code\computerNetwork\大作业\3-1\Project6\client.cpp(62,13): warning C4101: “sum”: 未引用的局部变量
+G:\code\computerNetwork\大作业\3-1\Project6\client.cpp(238,13): warning C4101: “sum”: 未引用的局部变量
+  Project6.vcxproj -> G:\code\computerNetwork\大作业\3-1\Project6\Debug\Project6.exe
