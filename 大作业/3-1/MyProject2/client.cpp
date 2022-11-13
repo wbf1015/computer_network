@@ -1,3 +1,5 @@
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
+#define _CRT_SECURE_NO_WARNINGS 1
 #include<iostream>
 #include<WinSock2.h>
 #include<time.h>
@@ -38,16 +40,14 @@ const unsigned char ACK = 0x2;//FIN=0,ACK=1,SYN=0
 const unsigned char SYN_ACK = 0x3;//FIN=0,ACK=1,SYN=1
 const unsigned char OVER = 0x8;//OVER=1,FIN=0,ACK=0,SYN=0
 const unsigned char OVER_ACK = 0xA;//OVER=1,FIN=0,ACK=1,SYN=0
-const double MAX_TIME = CLOCKS_PER_SEC;
+const int MAX_TIME = CLOCKS_PER_SEC;
 //数据头
 struct Header {
-    unsigned char seq; //8位序列号,因为是停等，所以只有最低位实际上只有0和1两种状态
-    unsigned char ack; //8位ack号，因为是停等，所以只有最低位实际上只有0和1两种状态
-    unsigned char empty;//8位空位
-    unsigned char flag;//8位状态位 倒数第一位SYN,倒数第二位ACK，倒数第三位FIN
     u_short checksum; //16位校验和
-    unsigned char empty2;//8位空位
-    unsigned char length;//8位长度位
+    u_short seq; //16位序列号,因为是停等，所以只有最低位实际上只有0和1两种状态
+    u_short ack; //16位ack号，因为是停等，所以只有最低位实际上只有0和1两种状态
+    u_short flag;//16位状态位 倒数第一位SYN,倒数第二位ACK，倒数第三位FIN
+    u_short length;//16位长度位
     u_short source_ip; //16位ip地址
     u_short des_ip; //16位ip地址
     u_short source_port; //16位源端口号
@@ -61,9 +61,7 @@ struct Header {
         seq = 0;
         ack = 0;
         flag = 0;
-        empty = 0;
         length = 0;
-        empty2 = 0;
     }
 };
 
@@ -74,8 +72,8 @@ u_short calcksum(u_short* mes, int size) {
     memset(buf, 0, size + 1);
     memcpy(buf, mes, size);
     u_long sum = 0;
-    buf += 3;
-    count -= 3;
+    buf += 1;
+    count -= 1;
     while (count--) {
         sum += *buf++;
         if (sum & 0xffff0000) {
@@ -92,8 +90,8 @@ u_short vericksum(u_short* mes, int size) {
     memset(buf, 0, size + 1);
     memcpy(buf, mes, size);
     u_long sum = 0;
-    buf += 2;
-    count -= 2;
+    //buf += 0;
+    //count -= 0;
     while (count--) {
         sum += *buf++;
         if (sum & 0xffff0000) {
@@ -109,17 +107,15 @@ void initialNeed();
 int  tryToConnect();
 int endsend();
 int loadMessage();
+int sendmessage();
 
 int main() {
     initialNeed();
-    if (tryToConnect() <= 0) {
-        cout << "握手失败，请检查连接后再试" << endl;
-        return -1;
-    }
-    cout << "握手成功！可以进行数据传输！...";
+    //tryToConnect();
+    loadMessage();
+    sendmessage();
 
-
-
+    return 0;
 }
 
 void test() {
@@ -165,10 +161,8 @@ int tryToConnect() {
     header.seq = 0;
     header.ack = 0;
     header.length = 0;
-    header.empty = 0;
-    header.empty2 = 0;
     header.checksum = calcksum((u_short*)&header, sizeof(header));
-    //cout << vericksum((u_short*)&header, sizeof(header)) << endl;
+    cout << vericksum((u_short*)&header, sizeof(header)) << endl;
     u_short* test = (u_short*)&header;
     memcpy(sendshbuffer, &header, sizeof(header));
     if (sendto(client, sendshbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen) == -1) {
@@ -212,6 +206,7 @@ FIRSTSHAKE:
     header.seq = 1;
     header.ack = 1;
     header.checksum = calcksum((u_short*)&header, sizeof(header));
+    cout << vericksum((u_short*)&header, sizeof(header)) << endl;
     memcpy(sendshbuffer, &header, sizeof(header));
     if (sendto(client, sendshbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen) == -1) {
         cout << "第三次握手信息发送失败，请稍后再试...." << endl;
@@ -221,7 +216,25 @@ FIRSTSHAKE:
     return 1;
 }
 
-int send() {
+int loadMessage() {
+    string filename;
+    cout << "请输入文件名称" << endl;
+    cin >> filename;
+    ifstream fin(filename.c_str(), ifstream::binary);//以二进制方式打开文件
+    unsigned long long int index = 0;
+    unsigned char temp = fin.get();
+    while (fin)
+    {
+        message[index++] = temp;
+        temp = fin.get();
+    }
+    messagelength = index-1;
+    fin.close();
+    cout << "完成文件读入工作" << endl;
+    return 0;
+}
+
+int sendmessage() {
     Header header;
     char* recvbuffer = new char[sizeof(header)];
     char* sendbuffer = new char[sizeof(header) + MAX_DATA_LENGTH];
@@ -244,10 +257,12 @@ int send() {
         header.length = ml;//实际数据长度
         memset(sendbuffer, 0, sizeof(header) + MAX_DATA_LENGTH);//sendbuffer全部置零
         memcpy(sendbuffer, &header, sizeof(header));//拷贝header内容
-        memcpy(sendbuffer + sizeof(header), message + messagepointer, ml);//拷贝数据内容
+        memcpy(sendbuffer+sizeof(header), message + messagepointer, ml);//拷贝数据内容
         messagepointer += ml;//更新数据指针
-        header.checksum = calcksum((u_short*)sendbuffer, sizeof(header) + MAX_DATA_LENGTH);//计算校验和
+        header.checksum = calcksum((u_short*)sendbuffer, sizeof(header)+MAX_DATA_LENGTH);//计算校验和
         memcpy(sendbuffer, &header, sizeof(header));//填充校验和
+        cout << vericksum((u_short*)sendbuffer, sizeof(header) + MAX_DATA_LENGTH) << endl;
+        cout << header.seq << endl;
     SEQ0SEND:
         //发送seq=0的数据包
         if (sendto(client, sendbuffer, sizeof(header) + MAX_DATA_LENGTH, 0, (sockaddr*)&router_addr, rlen) == -1) {
@@ -265,12 +280,12 @@ int send() {
                 }
                 start = clock();
                 cout << "SEQ=0的消息反馈超时....正在重传" << endl;
-                //goto SEQ0SEND;
+                goto SEQ0SEND;
             }
         }
         //检查ack位是否正确，如果正确则准备发下一个数据包
         memcpy(&header, recvbuffer, sizeof(header));
-        if (header.ack == 1 && vericksum((u_short*)&header, sizeof(header) == 0)){
+        if (header.ack == 1 && vericksum((u_short*)&header, sizeof(header) == 0)) {
             cout << "seq=0的数据包成功接受服务端ACK，准备发出下一个数据包" << endl;
         }
         else {
@@ -279,7 +294,6 @@ int send() {
         }
 
         //准备开始发SEQ=1的数据包
-        int ml;//本次数据传输长度
         if (messagepointer > messagelength) {
             if (endsend() == 1) { return 1; }
             return -1;
@@ -299,6 +313,7 @@ int send() {
         messagepointer += ml;//更新数据指针
         header.checksum = calcksum((u_short*)sendbuffer, sizeof(header) + MAX_DATA_LENGTH);//计算校验和
         memcpy(sendbuffer, &header, sizeof(header));//填充校验和
+        cout << vericksum((u_short*)sendbuffer, sizeof(header) + MAX_DATA_LENGTH) << endl;
     SEQ1SEND:
         //发送seq=1的数据包
         if (sendto(client, sendbuffer, sizeof(header) + MAX_DATA_LENGTH, 0, (sockaddr*)&router_addr, rlen) == -1) {
@@ -307,18 +322,18 @@ int send() {
         }
         start = clock();
     SEQ1RECV:
-            //如果收到数据了就不发了，否则延时重传
-            while (recvfrom(client, recvbuffer, sizeof(header), 0, (sockaddr*)&router_addr, &rlen) <= 0) {
-                if (clock() - start > MAX_TIME) {
-                    if (sendto(client, sendbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen) == -1) {
-                        cout << "SEQ=1的消息发送失败....请检查原因" << endl;
-                        return -1;
-                    }
-                    start = clock();
-                    cout << "SEQ=1的消息反馈超时....正在重传" << endl;
-                    //goto SEQ1SEND;
+        //如果收到数据了就不发了，否则延时重传
+        while (recvfrom(client, recvbuffer, sizeof(header), 0, (sockaddr*)&router_addr, &rlen) <= 0) {
+            if (clock() - start > MAX_TIME) {
+                if (sendto(client, sendbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen) == -1) {
+                    cout << "SEQ=1的消息发送失败....请检查原因" << endl;
+                    return -1;
                 }
+                start = clock();
+                cout << "SEQ=1的消息反馈超时....正在重传" << endl;
+                //goto SEQ1SEND;
             }
+        }
         //检查ack位是否正确，如果正确则准备发下一个数据包
         memcpy(&header, recvbuffer, sizeof(header));
         if (header.ack == 0 && vericksum((u_short*)&header, sizeof(header)) == 0) {
@@ -367,19 +382,4 @@ RECV:
         cout << "数据包错误....正在等待重传" << endl;
         goto RECV;
     }
-}
-
-int loadMessage() {
-    string filename;
-    cout << "请输入文件名称" << endl;
-    cin >> filename;
-    ifstream fin(filename.c_str(), ifstream::binary);//以二进制方式打开文件
-    int index = 0;
-    unsigned char temp = fin.get();
-    while (fin)
-    {
-        message[index++] = temp;
-        temp = fin.get();
-    }
-    fin.close();
 }

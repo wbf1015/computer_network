@@ -35,13 +35,11 @@ const unsigned char OVER_ACK = 0xA;//OVER=1,FIN=0,ACK=1,SYN=0
 const double MAX_TIME = CLOCKS_PER_SEC;
 //数据头
 struct Header {
-    unsigned char seq; //8位序列号,因为是停等，所以只有最低位实际上只有0和1两种状态
-    unsigned char ack; //8位ack号，因为是停等，所以只有最低位实际上只有0和1两种状态
-    unsigned char empty;//8位空位
-    unsigned char flag;//8位状态位 倒数第一位SYN,倒数第二位ACK，倒数第三位FIN，倒数第四位是结束位
     u_short checksum; //16位校验和
-    unsigned char empty2;//8位空位
-    unsigned char length;//8位长度位
+    u_short seq; //8位序列号,因为是停等，所以只有最低位实际上只有0和1两种状态
+    u_short ack; //8位ack号，因为是停等，所以只有最低位实际上只有0和1两种状态
+    u_short flag;//8位状态位 倒数第一位SYN,倒数第二位ACK，倒数第三位FIN，倒数第四位是结束位
+    u_short length;//8位长度位
     u_short source_ip; //16位ip地址
     u_short des_ip; //16位ip地址
     u_short source_port; //16位源端口号
@@ -55,9 +53,7 @@ struct Header {
         seq = 0;
         ack = 0;
         flag = 0;
-        empty = 0;
         length = 0;
-        empty2 = 0;
     }
 };
 
@@ -68,8 +64,8 @@ u_short calcksum(u_short* mes, int size) {
     memset(buf, 0, size + 1);
     memcpy(buf, mes, size);
     u_long sum = 0;
-    buf += 3;
-    count -= 3;
+    buf += 1;
+    count -= 1;
     while (count--) {
         sum += *buf++;
         if (sum & 0xffff0000) {
@@ -86,8 +82,8 @@ u_short vericksum(u_short* mes, int size) {
     memset(buf, 0, size + 1);
     memcpy(buf, mes, size);
     u_long sum = 0;
-    buf += 2;
-    count -= 2;
+    //buf += 2;
+    //count -= 2;
     while (count--) {
         sum += *buf++;
         if (sum & 0xffff0000) {
@@ -101,17 +97,15 @@ u_short vericksum(u_short* mes, int size) {
 void test();
 void initialNeed();
 int  tryToConnect();
-int  receive();
-int  endsend();
+int  receivemessage();
+int  endreceive();
 int loadmessage();
 
 int main() {
     initialNeed();
-    if (tryToConnect() <= 0) {
-        cout << "握手失败，请检查连接后再试" << endl;
-        return -1;
-    }
-    cout << "握手成功！等待客户端传输！...";
+    //tryToConnect();
+    receivemessage();
+    loadmessage();
 }
 
 void initialNeed() {
@@ -185,6 +179,7 @@ SECONDSHAKE:
     header.seq = 0;
     header.length = 0;
     header.checksum = calcksum((u_short*)(&header), sizeof(header));
+    cout << vericksum((u_short*)&header, sizeof(header)) << endl;
     memcpy(sendshbuffer, &header, sizeof(header));
     if (sendto(server, sendshbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen) == -1) {
         cout << "....第二次握手消息发送失败...." << endl;
@@ -218,24 +213,39 @@ SECONDSHAKE:
     return 1;
 }
 
-int receive() {
+
+int loadmessage() {
+    string filename = "1.jpg";
+    ofstream fout(filename.c_str(), ofstream::binary);
+    for (int i = 0; i < messagepointer; i++)
+    {
+        fout << message[i];
+    }
+    fout.close();
+    cout << "文件已成功下载到本地" << endl;
+    return 0;
+}
+
+int receivemessage() {
     Header header;
     char* recvbuffer = new char[sizeof(header) + MAX_DATA_LENGTH];
     char* sendbuffer = new char[sizeof(header)];
 
- WAITSEQ0:
+WAITSEQ0:
     //接受seq=0的数据
     while (true) {
         while (recvfrom(server, recvbuffer, sizeof(header) + MAX_DATA_LENGTH, 0, (sockaddr*)&router_addr, &rlen) == -1) {
             cout << "接受失败...请检查原因" << endl;
+            cout << WSAGetLastError() << endl;
         }
         memcpy(&header, recvbuffer, sizeof(header));
-        if (header.flag == OVER ) {
+        //cout << header.flag << endl;
+        if (header.flag == OVER) {
             //传输结束，等待添加....
-            if (vericksum((u_short*)&header, sizeof(header) == 0)) { if (endsend()) { return 1; }return 0; }
+            if (vericksum((u_short*)&header, sizeof(header)) == 0) { if (endreceive()) { return 1; }return 0; }
             else { cout << "数据包出错，正在等待重传" << endl; goto WAITSEQ0; }
         }
-        if (header.seq == 0 && vericksum((u_short*)&header, sizeof(header)) == 0) {
+        if (header.seq == 0 && vericksum((u_short*)recvbuffer, sizeof(header)+MAX_DATA_LENGTH) == 0) {
             cout << "成功接收seq=0数据包" << endl;
             memcpy(message + messagepointer, recvbuffer + sizeof(header), header.length);
             messagepointer += header.length;
@@ -250,7 +260,7 @@ int receive() {
     header.checksum = calcksum((u_short*)&header, sizeof(header));
     memcpy(sendbuffer, &header, sizeof(header));
 SENDACK0:
-    if (sendto(server, sendbuffer, sizeof(header),0, (sockaddr*)&router_addr, rlen) == -1) {
+    if (sendto(server, sendbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen) == -1) {
         cout << "ack0发送失败...." << endl;
         return -1;
     }
@@ -270,10 +280,10 @@ RECVSEQ1:
     memcpy(&header, recvbuffer, sizeof(header));
     if (header.flag == OVER) {
         //传输结束，等待添加....
-        if (vericksum((u_short*)&header, sizeof(header) == 0)) { if (endsend()) { return 1; }return 0; }
+        if (vericksum((u_short*)&header, sizeof(header) == 0)) { if (endreceive()) { return 1; }return 0; }
         else { cout << "数据包出错，正在等待重传" << endl; goto WAITSEQ0; }
     }
-    if (header.seq == 1 && vericksum((u_short*)&header, sizeof(header) == 0)) {
+    if (header.seq == 1 && vericksum((u_short*)recvbuffer, sizeof(header)+MAX_DATA_LENGTH)==0) {
         cout << "成功接受seq=1的数据包，正在解析..." << endl;
         memcpy(message + messagepointer, recvbuffer + sizeof(header), header.length);
         messagepointer += header.length;
@@ -290,22 +300,12 @@ RECVSEQ1:
     goto WAITSEQ0;
 }
 
-int endsend() {
+int endreceive() {
     Header header;
     char* sendbuffer = new char[sizeof(header)];
     header.flag = OVER_ACK;
     header.checksum = calcksum((u_short*)&header, sizeof(header));
+    memcpy(sendbuffer, &header,sizeof(header));
     if (sendto(server, sendbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen) >= 0) return 1;
     return 0;
-}
-
-int loadmessage() {
-    string filename = "1.jpg";
-    ofstream fout(filename.c_str(), ofstream::binary);
-    for (int i = 0; i < messagepointer; i++)
-    {
-        fout << message[i];
-    }
-    fout.close();
-    cout << "文件已成功下载到本地" << endl;
 }

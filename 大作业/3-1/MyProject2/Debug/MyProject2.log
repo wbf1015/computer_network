@@ -1,2 +1,6 @@
 ﻿  client.cpp
+G:\code\computerNetwork\大作业\3-1\MyProject2\client.cpp(253,49): warning C4244: “=”: 从“unsigned __int64”转换到“int”，可能丢失数据
+G:\code\computerNetwork\大作业\3-1\MyProject2\client.cpp(305,49): warning C4244: “=”: 从“unsigned __int64”转换到“int”，可能丢失数据
+G:\code\computerNetwork\大作业\3-1\MyProject2\client.cpp(317,13): warning C4102: “SEQ1SEND”: 未引用的标签
+G:\code\computerNetwork\大作业\3-1\MyProject2\client.cpp(357,5): warning C4102: “SEND”: 未引用的标签
   MyProject2.vcxproj -> G:\code\computerNetwork\大作业\3-1\MyProject2\Debug\MyProject2.exe
