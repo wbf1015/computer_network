@@ -22,17 +22,19 @@ unsigned long long int messagepointer;
 int clen = sizeof(client_addr);
 int rlen = sizeof(router_addr);
 //常数设置
+u_long blockmode = 0;
+u_long unblockmode = 1;
 const unsigned char MAX_DATA_LENGTH = 0xff;
 const u_short SOURCEIP = 0x7f01;
 const u_short DESIP = 0x7f01;
 const u_short SOURCEPORT = 8888;//源端口是8888
-const u_short DESPORT = 8887;//路由器端口号是8887
+const u_short DESPORT = 8887;//客户端端口号是8887
 const unsigned char SYN = 0x1;//OVER=0,FIN=0,ACK=0,SYN=1
 const unsigned char ACK = 0x2;//OVER=0,FIN=0,ACK=1,SYN=0
 const unsigned char SYN_ACK = 0x3;//OVER=0,FIN=0,ACK=1,SYN=1
 const unsigned char OVER = 0x8;//OVER=1,FIN=0,ACK=0,SYN=0
 const unsigned char OVER_ACK = 0xA;//OVER=1,FIN=0,ACK=1,SYN=0
-const double MAX_TIME = CLOCKS_PER_SEC;
+const double MAX_TIME = 0.1*CLOCKS_PER_SEC;
 //数据头
 struct Header {
     u_short checksum; //16位校验和
@@ -215,7 +217,7 @@ SECONDSHAKE:
 
 
 int loadmessage() {
-    string filename = "1.jpg";
+    string filename = "2.jpg";
     ofstream fout(filename.c_str(), ofstream::binary);
     for (int i = 0; i < messagepointer; i++)
     {
@@ -234,9 +236,11 @@ int receivemessage() {
 WAITSEQ0:
     //接受seq=0的数据
     while (true) {
+        //此时可以设置为阻塞模式
+        ioctlsocket(server, FIONBIO, &unblockmode);
         while (recvfrom(server, recvbuffer, sizeof(header) + MAX_DATA_LENGTH, 0, (sockaddr*)&router_addr, &rlen) == -1) {
-            cout << "接受失败...请检查原因" << endl;
-            cout << WSAGetLastError() << endl;
+            //cout << "接受失败...请检查原因" << endl;
+            //cout << WSAGetLastError() << endl;
         }
         memcpy(&header, recvbuffer, sizeof(header));
         //cout << header.flag << endl;
@@ -245,6 +249,7 @@ WAITSEQ0:
             if (vericksum((u_short*)&header, sizeof(header)) == 0) { if (endreceive()) { return 1; }return 0; }
             else { cout << "数据包出错，正在等待重传" << endl; goto WAITSEQ0; }
         }
+        cout << header.seq << " " << vericksum((u_short*)recvbuffer, sizeof(header) + MAX_DATA_LENGTH) << endl;
         if (header.seq == 0 && vericksum((u_short*)recvbuffer, sizeof(header)+MAX_DATA_LENGTH) == 0) {
             cout << "成功接收seq=0数据包" << endl;
             memcpy(message + messagepointer, recvbuffer + sizeof(header), header.length);
@@ -259,13 +264,15 @@ WAITSEQ0:
     header.seq = 0;
     header.checksum = calcksum((u_short*)&header, sizeof(header));
     memcpy(sendbuffer, &header, sizeof(header));
-SENDACK0:
+SENDACK1:
     if (sendto(server, sendbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen) == -1) {
-        cout << "ack0发送失败...." << endl;
+        cout << "ack1发送失败...." << endl;
         return -1;
     }
     clock_t start = clock();
 RECVSEQ1:
+    //设置为非阻塞模式
+    ioctlsocket(server, FIONBIO, &unblockmode);
     while (recvfrom(server, recvbuffer, sizeof(header) + MAX_DATA_LENGTH, 0, (sockaddr*)&router_addr, &rlen) <= 0) {
         if (clock() - start > MAX_TIME) {
             if (sendto(server, sendbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen) == -1) {
@@ -273,8 +280,8 @@ RECVSEQ1:
                 return -1;
             }
             start = clock();
-            cout << "ack0消息反馈超时....已重发...." << endl;
-            goto SENDACK0;
+            cout << "ack1消息反馈超时....已重发...." << endl;
+            goto SENDACK1;
         }
     }
     memcpy(&header, recvbuffer, sizeof(header));
@@ -283,13 +290,15 @@ RECVSEQ1:
         if (vericksum((u_short*)&header, sizeof(header) == 0)) { if (endreceive()) { return 1; }return 0; }
         else { cout << "数据包出错，正在等待重传" << endl; goto WAITSEQ0; }
     }
+    cout << header.seq << " " << vericksum((u_short*)recvbuffer, sizeof(header) + MAX_DATA_LENGTH) << endl;
+
     if (header.seq == 1 && vericksum((u_short*)recvbuffer, sizeof(header)+MAX_DATA_LENGTH)==0) {
         cout << "成功接受seq=1的数据包，正在解析..." << endl;
         memcpy(message + messagepointer, recvbuffer + sizeof(header), header.length);
         messagepointer += header.length;
     }
     else {
-        cout << "数据报损坏，正在等待重新传输" << endl;
+        cout << "数据包损坏，正在等待重新传输" << endl;
         goto RECVSEQ1;
     }
     header.ack = 0;

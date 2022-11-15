@@ -34,13 +34,13 @@ const unsigned char MAX_DATA_LENGTH = 0xff;
 const u_short SOURCEIP = 0x7f01;
 const u_short DESIP = 0x7f01;
 const u_short SOURCEPORT = 8887;//客户端端口是8887
-const u_short DESPORT = 8888;//路由器端口号是8886
+const u_short DESPORT = 8888;//服务端端口号是8888
 const unsigned char SYN = 0x1;//FIN=0,ACK=0,SYN=1
 const unsigned char ACK = 0x2;//FIN=0,ACK=1,SYN=0
 const unsigned char SYN_ACK = 0x3;//FIN=0,ACK=1,SYN=1
 const unsigned char OVER = 0x8;//OVER=1,FIN=0,ACK=0,SYN=0
 const unsigned char OVER_ACK = 0xA;//OVER=1,FIN=0,ACK=1,SYN=0
-const int MAX_TIME = CLOCKS_PER_SEC;
+const int MAX_TIME = 0.1*CLOCKS_PER_SEC; //最大传输延迟时间
 //数据头
 struct Header {
     u_short checksum; //16位校验和
@@ -235,6 +235,9 @@ int loadMessage() {
 }
 
 int sendmessage() {
+    //设置是否为非阻塞模式
+    ioctlsocket(client, FIONBIO, &mode);
+
     Header header;
     char* recvbuffer = new char[sizeof(header)];
     char* sendbuffer = new char[sizeof(header) + MAX_DATA_LENGTH];
@@ -261,36 +264,40 @@ int sendmessage() {
         messagepointer += ml;//更新数据指针
         header.checksum = calcksum((u_short*)sendbuffer, sizeof(header)+MAX_DATA_LENGTH);//计算校验和
         memcpy(sendbuffer, &header, sizeof(header));//填充校验和
-        cout << vericksum((u_short*)sendbuffer, sizeof(header) + MAX_DATA_LENGTH) << endl;
-        cout << header.seq << endl;
+        //cout << vericksum((u_short*)sendbuffer, sizeof(header) + MAX_DATA_LENGTH) << endl;
+        //cout << header.seq << endl;
     SEQ0SEND:
         //发送seq=0的数据包
+        cout << "准备发送" << "0" << "号数据包，该数据包大小为:" << ml<<" ";
+        cout << "校验和为" << vericksum((u_short*)sendbuffer, sizeof(header) + MAX_DATA_LENGTH) << endl;
         if (sendto(client, sendbuffer, sizeof(header) + MAX_DATA_LENGTH, 0, (sockaddr*)&router_addr, rlen) == -1) {
-            cout << "发送失败....请检查原因" << endl;
+            cout << "seq0数据包发送失败....请检查原因" << endl;
             return -1;
         }
         clock_t start = clock();
     SEQ0RECV:
         //如果收到数据了就不发了，否则延时重传
+        //设置了非阻塞，所以不会卡住
         while (recvfrom(client, recvbuffer, sizeof(header), 0, (sockaddr*)&router_addr, &rlen) <= 0) {
             if (clock() - start > MAX_TIME) {
                 if (sendto(client, sendbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen) == -1) {
-                    cout << "SEQ=0的消息发送失败....请检查原因" << endl;
+                    cout << "seq0数据包发送失败....请检查原因" << endl;
                     return -1;
                 }
                 start = clock();
-                cout << "SEQ=0的消息反馈超时....正在重传" << endl;
+                cout << "seq0数据包反馈超时....正在重传" << endl;
                 goto SEQ0SEND;
             }
         }
         //检查ack位是否正确，如果正确则准备发下一个数据包
         memcpy(&header, recvbuffer, sizeof(header));
+        cout << "接受到的ack为" << header.ack << "接受到的校验和为" << vericksum((u_short*)&header, sizeof(header)) << endl;
         if (header.ack == 1 && vericksum((u_short*)&header, sizeof(header) == 0)) {
-            cout << "seq=0的数据包成功接受服务端ACK，准备发出下一个数据包" << endl;
+            cout << "seq0数据包成功接受服务端ACK，准备发出下一个数据包" << endl;
         }
         else {
-            cout << "不是期待的数据包，准备重发SEQ=0的数据包" << endl;
-            goto SEQ0RECV;
+            cout << "服务端未反馈正确的数据包...正在等待重传..." << endl;
+            goto SEQ0SEND;
         }
 
         //准备开始发SEQ=1的数据包
@@ -313,11 +320,13 @@ int sendmessage() {
         messagepointer += ml;//更新数据指针
         header.checksum = calcksum((u_short*)sendbuffer, sizeof(header) + MAX_DATA_LENGTH);//计算校验和
         memcpy(sendbuffer, &header, sizeof(header));//填充校验和
-        cout << vericksum((u_short*)sendbuffer, sizeof(header) + MAX_DATA_LENGTH) << endl;
+        //cout << vericksum((u_short*)sendbuffer, sizeof(header) + MAX_DATA_LENGTH) << endl;
     SEQ1SEND:
         //发送seq=1的数据包
+        cout << "准备发送" << "1" << "号数据包，该数据包大小为:" << ml << " ";
+        cout << "校验和为" << vericksum((u_short*)sendbuffer, sizeof(header) + MAX_DATA_LENGTH) << endl;
         if (sendto(client, sendbuffer, sizeof(header) + MAX_DATA_LENGTH, 0, (sockaddr*)&router_addr, rlen) == -1) {
-            cout << "发送失败....请检查原因" << endl;
+            cout << "seq1数据包发送失败....请检查原因" << endl;
             return -1;
         }
         start = clock();
@@ -326,22 +335,23 @@ int sendmessage() {
         while (recvfrom(client, recvbuffer, sizeof(header), 0, (sockaddr*)&router_addr, &rlen) <= 0) {
             if (clock() - start > MAX_TIME) {
                 if (sendto(client, sendbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen) == -1) {
-                    cout << "SEQ=1的消息发送失败....请检查原因" << endl;
+                    cout << "seq1数据包发送失败....请检查原因" << endl;
                     return -1;
                 }
                 start = clock();
-                cout << "SEQ=1的消息反馈超时....正在重传" << endl;
-                //goto SEQ1SEND;
+                cout << "seq1数据包反馈超时....正在重传" << endl;
+                goto SEQ1SEND;
             }
         }
         //检查ack位是否正确，如果正确则准备发下一个数据包
         memcpy(&header, recvbuffer, sizeof(header));
+        cout << "接受到的ack为: " << header.ack << "接受到的校验和为: " << vericksum((u_short*)&header, sizeof(header)) << endl;
         if (header.ack == 0 && vericksum((u_short*)&header, sizeof(header)) == 0) {
-            cout << "seq=1的数据包成功接受服务端ACK，准备发出下一个数据包" << endl;
+            cout << "seq1的数据包成功接受服务端ACK，准备发出下一个数据包" << endl;
         }
         else {
-            cout << "不是期待的数据包，准备重发SEQ=0的数据包" << endl;
-            goto SEQ1RECV;
+            cout << "服务端未反馈正确的数据包...正在等待重传..." << endl;
+            goto SEQ1SEND;
         }
     }
 }
