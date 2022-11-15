@@ -3,6 +3,7 @@
 #include<time.h>
 #include<fstream>
 #include<iostream>
+#include<windows.h>
 using namespace std;
 #pragma comment(lib,"ws2_32.lib")
 //初始化dll
@@ -34,7 +35,9 @@ const unsigned char ACK = 0x2;//OVER=0,FIN=0,ACK=1,SYN=0
 const unsigned char SYN_ACK = 0x3;//OVER=0,FIN=0,ACK=1,SYN=1
 const unsigned char OVER = 0x8;//OVER=1,FIN=0,ACK=0,SYN=0
 const unsigned char OVER_ACK = 0xA;//OVER=1,FIN=0,ACK=1,SYN=0
-const double MAX_TIME = 0.1*CLOCKS_PER_SEC;
+const unsigned char FIN = 0x10;//FIN=1,OVER=0,FIN=0,ACK=0,SYN=0
+const unsigned char FIN_ACK = 0x12;//FIN=1,OVER=0,FIN=0,ACK=1,SYN=0
+const double MAX_TIME = 0.2*CLOCKS_PER_SEC;
 //数据头
 struct Header {
     u_short checksum; //16位校验和
@@ -58,6 +61,25 @@ struct Header {
         length = 0;
     }
 };
+
+void printcharstar(char* s, int l) {
+    for (int i = 0; i < l; i++) {
+        cout << (int)s[i];
+    }
+    cout << endl;
+}
+
+void printheader(Header& h) {
+    cout << "checksum=" << h.checksum << endl;
+    cout << "se1=" << h.seq << endl;
+    cout << "ack=" << h.ack << endl;
+    cout << "flag=" << h.flag << endl;
+    cout << "length=" << h.length << endl;
+    cout << "sourceip=" << h.source_ip << endl;
+    cout << "desip=" << h.des_ip << endl;
+    cout << "source_port=" << h.source_port << endl;
+    cout << "des_port=" << h.des_port << endl;
+}
 
 //sizeof返回内存字节数 ushort是16位2字节，所以需要把size向上取整
 u_short calcksum(u_short* mes, int size) {
@@ -105,7 +127,7 @@ int loadmessage();
 
 int main() {
     initialNeed();
-    //tryToConnect();
+    tryToConnect();
     receivemessage();
     loadmessage();
 }
@@ -129,7 +151,7 @@ void initialNeed() {
     client_addr.sin_addr.s_addr = htonl(2130706433);//主机127.0.0.1
 
     //绑定服务端
-    server = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    server = socket(AF_INET, SOCK_DGRAM, 0);
     bind(server, (SOCKADDR*)&server_addr, sizeof(server_addr));
 
     //计算地址性质
@@ -203,15 +225,28 @@ SECONDSHAKE:
             start = clock();
         }
     }
+
     memcpy(&header, recvshbuffer, sizeof(header));
     if (header.flag == ACK && vericksum((u_short*)(&header), sizeof(header)) == 0) {
         cout << "成功接收第三次握手消息！可以开始接收数据..." << endl;
-        cout << "正在等待接收数据...." << endl;
+        header.source_port = SOURCEPORT;
+        header.des_port = DESPORT;
+        header.flag = ACK;
+        header.source_port = SOURCEPORT;
+        header.des_port = DESPORT;
+        header.ack = (header.seq + 1) % 2;
+        header.seq = 0;
+        header.length = 0;
+        header.checksum = calcksum((u_short*)(&header), sizeof(header));
+        memcpy(sendshbuffer, &header, sizeof(header));
+        sendto(server, sendshbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen);
+        cout << "确认信息传输成功...." << endl;
     }
     else {
         cout << "不是期待的数据包，正在重传并等待客户端等待重传" << endl;
         goto SECONDSHAKE;
     }
+    cout << "正在等待接收数据...." << endl;
     return 1;
 }
 
@@ -238,7 +273,7 @@ WAITSEQ0:
     while (true) {
         //此时可以设置为阻塞模式
         ioctlsocket(server, FIONBIO, &unblockmode);
-        while (recvfrom(server, recvbuffer, sizeof(header) + MAX_DATA_LENGTH, 0, (sockaddr*)&router_addr, &rlen) == -1) {
+        while (recvfrom(server, recvbuffer, sizeof(header) + MAX_DATA_LENGTH, 0, (sockaddr*)&router_addr, &rlen) <= 0) {
             //cout << "接受失败...请检查原因" << endl;
             //cout << WSAGetLastError() << endl;
         }
@@ -250,6 +285,8 @@ WAITSEQ0:
             else { cout << "数据包出错，正在等待重传" << endl; goto WAITSEQ0; }
         }
         cout << header.seq << " " << vericksum((u_short*)recvbuffer, sizeof(header) + MAX_DATA_LENGTH) << endl;
+        //printheader(header);
+        //printcharstar(recvbuffer, sizeof(header) + MAX_DATA_LENGTH);
         if (header.seq == 0 && vericksum((u_short*)recvbuffer, sizeof(header)+MAX_DATA_LENGTH) == 0) {
             cout << "成功接收seq=0数据包" << endl;
             memcpy(message + messagepointer, recvbuffer + sizeof(header), header.length);
@@ -317,4 +354,53 @@ int endreceive() {
     memcpy(sendbuffer, &header,sizeof(header));
     if (sendto(server, sendbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen) >= 0) return 1;
     return 0;
+}
+
+int tryToDisconnect() {
+    Header header;
+    char* sendbuffer = new char[sizeof(header)];
+    char* recvbuffer = new char[sizeof(header)];
+RECVWAVE1:
+    while(recvfrom(server,recvbuffer,sizeof(header),0,(sockaddr*)&router_addr,&rlen)<=0){}
+    memcpy(&header, recvbuffer, sizeof(header));
+    if (header.flag == FIN && vericksum((u_short*)&header, sizeof(header)) == 0) {
+        cout << "收到第一次挥手信息" << endl;
+    }
+    else {
+        cout << "第一次挥手消息接收失败" << endl;
+        goto RECVWAVE1;
+    }
+ SEND2:
+    header.seq = 0;
+    header.flag = ACK;
+    header.checksum = calcksum((u_short*)&header, sizeof(header));
+    memcpy(sendbuffer, &header, sizeof(header));
+    if (sendto(server, sendbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen) == -1) {
+        cout << "第二次挥手消息发送失败..." << endl;
+        return -1;
+    }
+    Sleep(80);
+    header.seq = 1;
+    header.flag = FIN_ACK;
+    memcpy(sendbuffer, &header, sizeof(header));
+    if (sendto(server, sendbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen) == -1) {
+        cout << "第三次挥手消息发送失败..." << endl;
+        return -1;
+    }
+    clock_t start = clock();
+    while (recvfrom(server, recvbuffer, sizeof(header), 0, (sockaddr*)&router_addr, &rlen) <= 0) {
+        if (clock() - start > MAX_TIME) {
+            cout << "第四次挥手消息接收延迟...准备重发二三次挥手" << endl;
+            goto SEND2;
+        }
+    }
+
+    memcpy(&header, recvbuffer, sizeof(header));
+    if (header.flag == ACK && vericksum((u_short*)&header, sizeof(header)) == 0) {
+        header.seq = 0;
+        header.checksum = calcksum((u_short*)&header, sizeof(header));
+        memcpy(sendbuffer, &header, sizeof(header));
+        sendto(server, sendbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen);
+    }
+    cout << "四次挥手结束，以及断开连接" << endl;
 }
