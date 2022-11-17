@@ -43,6 +43,7 @@ const unsigned char OVER = 0x8;//OVER=1,FIN=0,ACK=0,SYN=0
 const unsigned char OVER_ACK = 0xA;//OVER=1,FIN=0,ACK=1,SYN=0
 const unsigned char FIN = 0x10;//FIN=1,OVER=0,FIN=0,ACK=0,SYN=0
 const unsigned char FIN_ACK = 0x12;//FIN=1,OVER=0,FIN=0,ACK=1,SYN=0
+const unsigned char FINAL_CHECK = 0x20;//FC=1.FIN=0,OVER=0,FIN=0,ACK=0,SYN=0
 const int MAX_TIME = 0.2*CLOCKS_PER_SEC; //最大传输延迟时间
 //数据头
 struct Header {
@@ -130,12 +131,14 @@ int  tryToConnect();
 int endsend();
 int loadMessage();
 int sendmessage();
+int tryToDisconnect();
 
 int main() {
     initialNeed();
     tryToConnect();
     loadMessage();
     sendmessage();
+    tryToDisconnect();
 
     return 0;
 }
@@ -473,6 +476,7 @@ WAIT3:
     }
     header.seq = 1;
     header.flag = ACK;
+    header.checksum = calcksum((u_short*)&header, sizeof(header));
     memcpy(sendbuffer, &header, sizeof(header));
 SENDWAVE4:
     if (sendto(client, sendbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen) == -1) {
@@ -480,10 +484,21 @@ SENDWAVE4:
         return -1;
     }
     start = clock();
+    ioctlsocket(client, FIONBIO, &unlockmode);
     while (recvfrom(client, recvbuffer, sizeof(header), 0, (sockaddr*)&router_addr, &rlen) <= 0) {
-        if (clock() - start > 2 * MAX_DATA_LENGTH) {
+        if (clock() - start > 2 * MAX_TIME) {
+            cout << "接受反馈超时，重发第四次挥手" << endl;
             goto SENDWAVE4;
         }
     }
-    cout << "四次挥手完成....即将断开连接" << endl;
+    memcpy(&header, recvbuffer, sizeof(header));
+    if (header.flag == FINAL_CHECK && vericksum((u_short*)&header, sizeof(header)) == 0) {
+        cout << "四次挥手完成....即将断开连接" << endl;
+        return 1;
+    }
+    else {
+        cout << "数据包错误,准备重发第四次握手" << endl;
+        goto SENDWAVE4;
+    }
+
 }

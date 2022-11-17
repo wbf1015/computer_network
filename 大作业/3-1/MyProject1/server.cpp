@@ -37,6 +37,7 @@ const unsigned char OVER = 0x8;//OVER=1,FIN=0,ACK=0,SYN=0
 const unsigned char OVER_ACK = 0xA;//OVER=1,FIN=0,ACK=1,SYN=0
 const unsigned char FIN = 0x10;//FIN=1,OVER=0,FIN=0,ACK=0,SYN=0
 const unsigned char FIN_ACK = 0x12;//FIN=1,OVER=0,FIN=0,ACK=1,SYN=0
+const unsigned char FINAL_CHECK=0x20;//FC=1.FIN=0,OVER=0,FIN=0,ACK=0,SYN=0
 const double MAX_TIME = 0.2*CLOCKS_PER_SEC;
 //数据头
 struct Header {
@@ -124,12 +125,14 @@ int  tryToConnect();
 int  receivemessage();
 int  endreceive();
 int loadmessage();
+int tryToDisconnect();
 
 int main() {
     initialNeed();
     tryToConnect();
     receivemessage();
     loadmessage();
+    tryToDisconnect();
 }
 
 void initialNeed() {
@@ -380,27 +383,40 @@ RECVWAVE1:
         return -1;
     }
     Sleep(80);
+SEND3:
     header.seq = 1;
     header.flag = FIN_ACK;
+    header.checksum = calcksum((u_short*)&header, sizeof(header));
     memcpy(sendbuffer, &header, sizeof(header));
     if (sendto(server, sendbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen) == -1) {
         cout << "第三次挥手消息发送失败..." << endl;
         return -1;
     }
     clock_t start = clock();
+    ioctlsocket(server, FIONBIO, &unblockmode);
     while (recvfrom(server, recvbuffer, sizeof(header), 0, (sockaddr*)&router_addr, &rlen) <= 0) {
         if (clock() - start > MAX_TIME) {
             cout << "第四次挥手消息接收延迟...准备重发二三次挥手" << endl;
+            ioctlsocket(server, FIONBIO, &blockmode);
             goto SEND2;
         }
     }
-
+SEND5:
     memcpy(&header, recvbuffer, sizeof(header));
     if (header.flag == ACK && vericksum((u_short*)&header, sizeof(header)) == 0) {
         header.seq = 0;
+        header.flag = FINAL_CHECK;
         header.checksum = calcksum((u_short*)&header, sizeof(header));
         memcpy(sendbuffer, &header, sizeof(header));
         sendto(server, sendbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen);
+        cout << "成功发送确认报文" << endl;
     }
-    cout << "四次挥手结束，以及断开连接" << endl;
+    start = clock();
+    while (recvfrom(server, recvbuffer, sizeof(header), 0, (sockaddr*)&router_addr, &rlen) <= 0) {
+        if (clock() - start > 10 * MAX_TIME) {
+            cout << "四次挥手结束，已经断开连接" << endl;
+            return 1;
+        }
+    }
+    goto SEND5;
 }
