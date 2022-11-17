@@ -62,6 +62,8 @@ struct Header {
         length = 0;
     }
 };
+//全局时钟设置
+clock_t linkClock;
 
 void printcharstar(char* s, int l) {
     for (int i = 0; i < l; i++) {
@@ -173,6 +175,7 @@ void test() {
 }
 
 int tryToConnect() {
+    linkClock = clock();
     Header header;//声明一个数据头
     char* recvshbuffer = new char[sizeof(header)];//创建一个和数据头一样大的接收缓冲区
     char* sendshbuffer = new char[sizeof(header)];//创建一个和数据头一样大的发送缓冲区
@@ -180,9 +183,14 @@ int tryToConnect() {
     while (true) {
         //收到了第一次握手的申请
         //我觉得他写的不对 返回值不太对
-        if (recvfrom(server, recvshbuffer, sizeof(header), 0, (sockaddr*)&router_addr, &rlen) == -1) {
-            cout << "....第一次握手信息接受失败...." << endl;
-            return -1;
+        ioctlsocket(server, FIONBIO, &unblockmode);
+        while (recvfrom(server, recvshbuffer, sizeof(header), 0, (sockaddr*)&router_addr, &rlen)<=0) {
+            if (clock() - linkClock > 75 * CLOCKS_PER_SEC) {
+                cout << "连接超时,服务器自动断开" << endl;
+                return -1;
+            }
+            //cout << "....第一次握手信息接受失败...." << endl;
+            //return -1;
         }
         memcpy(&header, recvshbuffer, sizeof(header));//给数据头赋值
         //如果是单纯的请求建立连接请求，并且校验和相加取反之后就是0
@@ -215,10 +223,18 @@ SECONDSHAKE:
     cout << "第二次握手消息发送成功...." << endl;
 
     clock_t start = clock();
+    if (clock() - linkClock > 75 * CLOCKS_PER_SEC) {
+        cout << "连接超时,服务器自动断开" << endl;
+        return -1;
+    }
 
     //第二次握手消息的超时重传 重传时直接重传sendshbuffer里的内容就可以
     //我觉得他写的不对 返回值不太对
     while (recvfrom(server, recvshbuffer, sizeof(header), 0, (sockaddr*)&router_addr, &rlen) <= 0) {
+        if (clock() - linkClock > 75 * CLOCKS_PER_SEC) {
+            cout << "连接超时,服务器自动断开" << endl;
+            return -1;
+        }
         if (clock() - start > MAX_TIME) {
             if (sendto(server, sendshbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen) == -1) {
                 cout << "....第二次握手消息重新发送失败...." << endl;
@@ -247,6 +263,10 @@ SECONDSHAKE:
     }
     else {
         cout << "不是期待的数据包，正在重传并等待客户端等待重传" << endl;
+        if (clock() - linkClock > 75 * CLOCKS_PER_SEC) {
+            cout << "连接超时,服务器自动断开" << endl;
+            return -1;
+        }
         goto SECONDSHAKE;
     }
     cout << "正在等待接收数据...." << endl;

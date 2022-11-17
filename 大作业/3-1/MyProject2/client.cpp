@@ -68,6 +68,8 @@ struct Header {
         length = 0;
     }
 };
+//全局时钟设置
+clock_t linkClock;
 
 void printcharstar(char* s,int l) {
     for (int i = 0; i < l; i++) {
@@ -175,6 +177,7 @@ void initialNeed() {
 }
 
 int tryToConnect() {
+    linkClock = clock();
     Header header;
     char* recvshbuffer = new char[sizeof(header)];
     char* sendshbuffer = new char[sizeof(header)];
@@ -205,6 +208,10 @@ FIRSTSHAKE:
 
     //第一次握手重传
     while (recvfrom(client, recvshbuffer, sizeof(header), 0, (sockaddr*)&router_addr, &rlen) <= 0) {
+        if (clock() - linkClock > 75 * CLOCKS_PER_SEC) {
+            cout << "连接超时,服务器自动断开" << endl;
+            return -1;
+        }
         if (clock() - start > MAX_TIME) {
             if (sendto(client, sendshbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen) == -1) {
                 cout << "第一次握手请求发送失败..." << endl;
@@ -223,8 +230,13 @@ FIRSTSHAKE:
     }
     else {
         cout << "不是期待的服务端数据包,即将重传第一次握手数据包...." << endl;
+        if (clock() - linkClock > 75 * CLOCKS_PER_SEC) {
+            cout << "连接超时,服务器自动断开" << endl;
+            return -1;
+        }
         goto SEND1;
     }
+
 
     //发送第三次握手信息
     header.source_port = SOURCEPORT;
@@ -242,8 +254,16 @@ SEND3:
     }
     start = clock();
     while (recvfrom(client, recvshbuffer, sizeof(header), 0, (sockaddr*)&router_addr, &rlen) <= 0) {
+        if (clock() - linkClock > 75 * CLOCKS_PER_SEC) {
+            cout << "连接超时,服务器自动断开" << endl;
+            return -1;
+        }
         if (clock() - start >= 5 * MAX_TIME) {
             cout << "第三次握手信息反馈超时...正在重新发送" << endl;
+            if (clock() - linkClock > 75 * CLOCKS_PER_SEC) {
+                cout << "连接超时,服务器自动断开" << endl;
+                return -1;
+            }
             goto SEND3;
         }
     }

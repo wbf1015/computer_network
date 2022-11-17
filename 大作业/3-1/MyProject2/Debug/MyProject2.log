@@ -1,9 +1,9 @@
 ﻿  client.cpp
 G:\code\computerNetwork\大作业\3-1\MyProject2\client.cpp(47,25): warning C4244: “初始化”: 从“double”转换到“int”，可能丢失数据
-G:\code\computerNetwork\大作业\3-1\MyProject2\client.cpp(202,11): warning C4102: “FIRSTSHAKE”: 未引用的标签
-G:\code\computerNetwork\大作业\3-1\MyProject2\client.cpp(291,49): warning C4244: “=”: 从“unsigned __int64”转换到“int”，可能丢失数据
-G:\code\computerNetwork\大作业\3-1\MyProject2\client.cpp(350,49): warning C4244: “=”: 从“unsigned __int64”转换到“int”，可能丢失数据
-G:\code\computerNetwork\大作业\3-1\MyProject2\client.cpp(315,13): warning C4102: “SEQ0RECV”: 未引用的标签
-G:\code\computerNetwork\大作业\3-1\MyProject2\client.cpp(371,13): warning C4102: “SEQ1RECV”: 未引用的标签
-G:\code\computerNetwork\大作业\3-1\MyProject2\client.cpp(405,5): warning C4102: “SEND”: 未引用的标签
+G:\code\computerNetwork\大作业\3-1\MyProject2\client.cpp(205,11): warning C4102: “FIRSTSHAKE”: 未引用的标签
+G:\code\computerNetwork\大作业\3-1\MyProject2\client.cpp(311,49): warning C4244: “=”: 从“unsigned __int64”转换到“int”，可能丢失数据
+G:\code\computerNetwork\大作业\3-1\MyProject2\client.cpp(370,49): warning C4244: “=”: 从“unsigned __int64”转换到“int”，可能丢失数据
+G:\code\computerNetwork\大作业\3-1\MyProject2\client.cpp(335,13): warning C4102: “SEQ0RECV”: 未引用的标签
+G:\code\computerNetwork\大作业\3-1\MyProject2\client.cpp(391,13): warning C4102: “SEQ1RECV”: 未引用的标签
+G:\code\computerNetwork\大作业\3-1\MyProject2\client.cpp(425,5): warning C4102: “SEND”: 未引用的标签
   MyProject2.vcxproj -> G:\code\computerNetwork\大作业\3-1\MyProject2\Debug\MyProject2.exe
