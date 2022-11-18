@@ -180,7 +180,7 @@ int tryToConnect() {
     Header header;//声明一个数据头
     char* recvshbuffer = new char[sizeof(header)];//创建一个和数据头一样大的接收缓冲区
     char* sendshbuffer = new char[sizeof(header)];//创建一个和数据头一样大的发送缓冲区
-    cout << "[0]正在等待数据传输...." << endl;
+    cout << "[0]正在等待连接...." << endl;
     //等待第一次握手
     while (true) {
         //收到了第一次握手的申请
@@ -250,6 +250,7 @@ SECONDSHAKE:
     memcpy(&header, recvshbuffer, sizeof(header));
     if (header.flag == ACK && vericksum((u_short*)(&header), sizeof(header)) == 0) {
         cout << "[3]成功接收第三次握手消息！可以开始接收数据..." << endl;
+SEND4:
         header.source_port = SOURCEPORT;
         header.des_port = DESPORT;
         header.flag = ACK;
@@ -271,6 +272,7 @@ SECONDSHAKE:
         }
         goto SECONDSHAKE;
     }
+LAST:
     cout << "[WAITING]正在等待接收数据...." << endl;
     return 1;
 }
@@ -288,6 +290,7 @@ int loadmessage() {
     cout << "[FINISH]文件已成功下载到本地" << endl;
     return 0;
 }
+
 
 int receivemessage() {
     Header header;
