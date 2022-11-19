@@ -70,6 +70,8 @@ struct Header {
 };
 //全局时钟设置
 clock_t linkClock;
+clock_t ALLSTART;
+clock_t ALLEND;
 
 void printcharstar(char* s,int l) {
     for (int i = 0; i < l; i++) {
@@ -134,6 +136,7 @@ int endsend();
 int loadMessage();
 int sendmessage();
 int tryToDisconnect();
+void printlog();
 
 int main() {
     initialNeed();
@@ -141,6 +144,7 @@ int main() {
     loadMessage();
     sendmessage();
     tryToDisconnect();
+    printlog();
 
     return 0;
 }
@@ -299,6 +303,7 @@ int loadMessage() {
 }
 
 int sendmessage() {
+    ALLSTART = clock();
     //设置是否为非阻塞模式
     ioctlsocket(client, FIONBIO, &unlockmode);
 
@@ -424,6 +429,7 @@ int sendmessage() {
 }
 
 int endsend() {
+    ALLEND = clock();
     Header header;
     char* sendbuffer = new char[sizeof(header)];
     char* recvbuffer = new char[sizeof(header)];
@@ -530,4 +536,13 @@ SENDWAVE4:
         goto SENDWAVE4;
     }
 
+}
+
+void printlog() {
+    cout << "             --------------传输日志--------------" << endl;
+    cout << "本次报文总长度为 " << messagepointer << "字节，共分为 " << (messagepointer / 256) + 1 << "个报文段分别转发" << endl;
+    double t = (ALLEND - ALLSTART) / CLOCKS_PER_SEC;
+    cout << "本次传输的总时长为" <<t <<"秒"<< endl;
+    t = messagepointer / t;
+    cout << "本次传输吞吐率为" << t <<"字节每秒"<< endl;
 }
