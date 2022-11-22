@@ -112,6 +112,7 @@ u_short calcksum(u_short* mes, int size) {
     }
     return ~(sum & 0xffff);
 }
+
 u_short vericksum(u_short* mes, int size) {
     int count = (size + 1) / 2;
     u_short* buf = (u_short*)malloc(size + 1);
@@ -306,18 +307,17 @@ int sendmessage() {
     int eWindow = 0 + WINDOWSIZE-1;//到这个序列号都是可以发的
     int nowpointer=0;//如果要发包，应该使用这个序列号
     Header header;
-    header.seq = 1;
     char* recvbuffer = new char[sizeof(header)];
-    char* sendbuffer = new char[MAX_DATA_LENGTH+sizeof(header)];
-    clock_t start;
+    char* sendbuffer = new char[sizeof(header)+MAX_DATA_LENGTH];
+    clock_t start=clock();
     while (true) {//一直在循环
         ioctlsocket(client, FIONBIO, &unlockmode);//设置为非阻塞
         while (recvfrom(client, recvbuffer, sizeof(header), 0, (sockaddr*)&router_addr, &rlen) > 0) {//如果收到了
             Header temp;
             memcpy(&temp, recvbuffer, sizeof(header));
-            if (temp.ack == sWindow) {//收到的是我需要的
+            if (temp.ack == sWindow&&vericksum((u_short*)recvbuffer,sizeof(header))==0) {//收到的是我需要的
                 cout << "正确接受ack号为" << temp.ack << "的ack" << endl;
-                if (sWindow == SEQSIZE) { sWindow = 0; }//调整窗口
+                if (sWindow == SEQSIZE) { sWindow = 0; }//调整窗口，开始位置的窗口从开始重新调整
                 else { sWindow++; }
                 if (eWindow + 1 > SEQSIZE) {//只有当eWindow=8时才会发生
                     eWindow = 0;
@@ -349,10 +349,11 @@ int sendmessage() {
                 memcpy(sendbuffer, &header, sizeof(header));
                 if (nowpointer == SEQSIZE) { nowpointer = 0; }
                 else { nowpointer++; }//更新nowpointer
+                cout << vericksum((u_short*)sendbuffer, sizeof(header) + MAX_DATA_LENGTH) << endl;//输出校验和
                 sendto(client, sendbuffer, sizeof(header) + MAX_DATA_LENGTH, 0, (sockaddr*)(&router_addr), rlen);
                 cout << "已发送序列号为" << header.seq << "的数据报" << endl;
                 startmap[header.seq] = messagepointer - ml;//如果要重发，记录其相对于message的偏移
-                lengthmap[header.seq] = ml;
+                lengthmap[header.seq] = ml;//如果需要重发，记录其长度
                 start = clock();//发送成功，做该序列号的计时
             }
             else {//收到的不是我需要的，说明可能丢包发生了，那我就重发现在我想收到的最小的序列号
@@ -364,8 +365,9 @@ int sendmessage() {
                 memcpy(sendbuffer, &h, sizeof(h));
                 memcpy(sendbuffer+sizeof(h), message + startmap[h.seq], h.length);
                 h.checksum = calcksum((u_short*)&sendbuffer, sizeof(h) + MAX_DATA_LENGTH);
-                memcpy(sendbuffer, &header, sizeof(h));
-                sendto(client, sendbuffer, sizeof(h) + MAX_DATA_LENGTH, 0, (sockaddr*)&router_addr, rlen);
+                memcpy(sendbuffer, &h, sizeof(h));
+                sendto(client, sendbuffer, sizeof(h) + MAX_DATA_LENGTH, 0, (sockaddr*)(&router_addr), rlen);
+                cout << "接收ack失败，正在重传数据报" << h.seq << endl;
                 start = clock();
                 break;//出去看看能不能发新的包
             }
@@ -374,16 +376,19 @@ int sendmessage() {
             if (clock() - start > MAX_TIME) {//超时重传
                 //这次转发不需要调整messagepointer和windows因为是重新发送
                 int ss = sWindow;
-                while (ss != nowpointer) {
+                while (ss != nowpointer) {//重发所有的数据报
+                    cout << "超时重传触发!" << endl;
                     Header h;
                     h.seq = ss;
                     h.length = lengthmap[ss];
                     memset(sendbuffer, 0, sizeof(h) + MAX_DATA_LENGTH);
                     memcpy(sendbuffer, &h, sizeof(h));
                     memcpy(sendbuffer + sizeof(h), message + startmap[h.seq], h.length);
-                    h.checksum = calcksum((u_short*)&sendbuffer, sizeof(h) + MAX_DATA_LENGTH);
-                    memcpy(sendbuffer, &header, sizeof(h));
+                    h.checksum = calcksum((u_short*)sendbuffer, sizeof(h) + MAX_DATA_LENGTH);
+                    memcpy(sendbuffer, &h, sizeof(h));
+                    cout << vericksum((u_short*)sendbuffer, sizeof(h) + MAX_DATA_LENGTH);
                     sendto(client, sendbuffer, sizeof(h) + MAX_DATA_LENGTH, 0, (sockaddr*)&router_addr, rlen);
+                    cout << "已经完成序列号为" << ss << "的数据报的重传" << endl;
                     if (ss == SEQSIZE) { ss = 0; }
                     else { ss++; }
                 }
@@ -411,16 +416,16 @@ int sendmessage() {
             memcpy(sendbuffer, &hh, sizeof(hh));
             memcpy(sendbuffer + sizeof(hh), message + messagepointer, ml);
             messagepointer += ml;
-            header.checksum = calcksum((u_short*)sendbuffer, sizeof(hh) + MAX_DATA_LENGTH);
+            hh.checksum = calcksum((u_short*)sendbuffer, sizeof(hh) + MAX_DATA_LENGTH);
             memcpy(sendbuffer, &hh, sizeof(hh));
+            cout << vericksum((u_short*)sendbuffer, sizeof(hh) + MAX_DATA_LENGTH) << endl;
             if (nowpointer == SEQSIZE) { nowpointer = 0; }
-            else { nowpointer++; }//更新nowpointer
+            else { nowpointer++; }//更新nowpointer，但是不用调整滑动窗口
             sendto(client, sendbuffer, sizeof(hh) + MAX_DATA_LENGTH, 0, (sockaddr*)(&router_addr), rlen);
             cout << "已发送序列号为" << hh.seq << "的数据报" << endl;
             startmap[hh.seq] = messagepointer - ml;//如果要重发，记录其相对于message的偏移
             lengthmap[hh.seq] = ml;
             //本次不更改计时因为没有收到新的合法的ack
-
         }
     }
 }

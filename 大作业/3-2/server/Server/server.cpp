@@ -293,10 +293,12 @@ int receivemessage() {
     int nowpointer = 0;//下一个要接收的
     while (true) {//反正就是一直接收
         ioctlsocket(server, FIONBIO, &unblockmode);//设置为非阻塞
-        if (recvfrom(server, recvbuffer, sizeof(header) + MAX_DATA_LENGTH, 0, (sockaddr*)&router_addr, &rlen) > 0) {
+        while (recvfrom(server, recvbuffer, sizeof(header) + MAX_DATA_LENGTH, 0, (sockaddr*)&router_addr, &rlen) > 0) {//如果我收到了
             memcpy(&header, recvbuffer, sizeof(header));
             if (header.flag == OVER) { endreceive(); return 1; }
-            if (header.seq == nowpointer) {//正确接收到想要的数据包
+            cout << header.seq << "  " << nowpointer << "  " << vericksum((u_short*)recvbuffer, sizeof(header) + MAX_DATA_LENGTH) << endl;
+            if (header.seq == nowpointer&&vericksum((u_short*)recvbuffer,sizeof(header)+MAX_DATA_LENGTH)==0) {//正确接收到想要的数据包
+                cout << "成功接收序列号为" << header.seq << "的数据报,正在发送ack"<<endl;
                 memcpy(message + messagepointer, recvbuffer + sizeof(header), header.length);//拷贝数据内容
                 messagepointer += header.length;//重置位置指针
                 header.ack = nowpointer;//表示这个包我收到了
@@ -305,16 +307,18 @@ int receivemessage() {
                 header.checksum = calcksum((u_short*)&header, sizeof(header));
                 memcpy(sendbuffer, &header, sizeof(header));
                 sendto(server, sendbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen);//发送ACK
+                continue;
             }
-            else {//不是想要的数据包
+                /*
                 if (nowpointer == 0) { header.seq = SEQSIZE; }
                 else { header.seq = nowpointer-1; }//发送上一个包
                 header.checksum = calcksum((u_short*)&header, sizeof(header));
                 memcpy(sendbuffer, &header, sizeof(header));
                 sendto(server, sendbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen);//发送ACK
-            }
+                cout << "不是期待的ack，已重发" << header.seq << endl;
+                */
+                cout << "不是期待的ack" << endl;
         }
-
     }
 
 }
