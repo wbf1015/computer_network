@@ -41,7 +41,7 @@ const unsigned char OVER_ACK = 0xA;//OVER=1,FIN=0,ACK=1,SYN=0
 const unsigned char FIN = 0x10;//FIN=1,OVER=0,FIN=0,ACK=0,SYN=0
 const unsigned char FIN_ACK = 0x12;//FIN=1,OVER=0,FIN=0,ACK=1,SYN=0
 const unsigned char FINAL_CHECK = 0x20;//FC=1.FIN=0,OVER=0,FIN=0,ACK=0,SYN=0
-const double MAX_TIME = 0.2 * CLOCKS_PER_SEC;
+const double MAX_TIME = 0.07 * CLOCKS_PER_SEC;
 //数据头
 struct Header {
     u_short checksum; //16位校验和
@@ -296,9 +296,9 @@ int receivemessage() {
         while (recvfrom(server, recvbuffer, sizeof(header) + MAX_DATA_LENGTH, 0, (sockaddr*)&router_addr, &rlen) > 0) {//如果我收到了
             memcpy(&header, recvbuffer, sizeof(header));
             if (header.flag == OVER) { endreceive(); return 1; }
-            cout << header.seq << "  " << nowpointer << "  " << vericksum((u_short*)recvbuffer, sizeof(header) + MAX_DATA_LENGTH) << endl;
+            //cout << header.seq << "  " << nowpointer << "  " << vericksum((u_short*)recvbuffer, sizeof(header) + MAX_DATA_LENGTH) << endl;
             if (header.seq == nowpointer&&vericksum((u_short*)recvbuffer,sizeof(header)+MAX_DATA_LENGTH)==0) {//正确接收到想要的数据包
-                cout << "成功接收序列号为" << header.seq << "的数据报,正在发送ack"<<endl;
+                cout << "[ACK]成功接收序列号为" << header.seq << "的数据报,正在发送ack" << "下一个期望收到的数据报序列号为" << header.seq + 1 << endl;
                 memcpy(message + messagepointer, recvbuffer + sizeof(header), header.length);//拷贝数据内容
                 messagepointer += header.length;//重置位置指针
                 header.ack = nowpointer;//表示这个包我收到了
@@ -317,7 +317,7 @@ int receivemessage() {
                 sendto(server, sendbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen);//发送ACK
                 cout << "不是期待的ack，已重发" << header.seq << endl;
                 */
-                cout << "不是期待的ack" << endl;
+                cout << "[ERROR]不是期待的ack" << endl;
         }
     }
 
