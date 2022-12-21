@@ -27,7 +27,7 @@ int rlen = sizeof(router_addr);
 u_long blockmode = 0;
 u_long unblockmode = 1;
 const int WINDOWSIZE = 4;//滑动窗口的大小为4
-const int SEQSIZE = 8;//序列号的大小为9(0-8)
+const int SEQSIZE = INT_MAX;//序列号的大小为9(0-8)
 const unsigned char MAX_DATA_LENGTH = 0xff;
 const u_short SOURCEIP = 0x7f01;
 const u_short DESIP = 0x7f01;
@@ -41,7 +41,7 @@ const unsigned char OVER_ACK = 0xA;//OVER=1,FIN=0,ACK=1,SYN=0
 const unsigned char FIN = 0x10;//FIN=1,OVER=0,FIN=0,ACK=0,SYN=0
 const unsigned char FIN_ACK = 0x12;//FIN=1,OVER=0,FIN=0,ACK=1,SYN=0
 const unsigned char FINAL_CHECK = 0x20;//FC=1.FIN=0,OVER=0,FIN=0,ACK=0,SYN=0
-const double MAX_TIME = 0.07 * CLOCKS_PER_SEC;
+const double MAX_TIME = 0.1 * CLOCKS_PER_SEC;
 //数据头
 struct Header {
     u_short checksum; //16位校验和
@@ -128,15 +128,23 @@ int  receivemessage();
 int  endreceive();
 int loadmessage();
 int tryToDisconnect();
+bool canLoad = false;
 DWORD WINAPI Recvprocess(LPVOID p);
 DWORD WINAPI Sendprocess(LPVOID p);
 
 int main() {
     initialNeed();
     tryToConnect();
-    receivemessage();
-    loadmessage();
-    tryToDisconnect();
+    HANDLE cthread = CreateThread(NULL, 0, Recvprocess, (LPVOID)nullptr, 0, NULL);
+    CloseHandle(cthread);
+    HANDLE ccthread = CreateThread(NULL, 0, Sendprocess, (LPVOID)nullptr, 0, NULL);
+    CloseHandle(ccthread);
+    while (true) {
+        if (canLoad) {
+            loadmessage();
+            break;
+        }
+    }
 }
 
 void initialNeed() {
@@ -288,51 +296,78 @@ int loadmessage() {
     cout << "[FINISH]文件已成功下载到本地" << endl;
     return 0;
 }
-int SEQWanted = 1;//现在想要收到的
+int SEQWanted = 0;//现在想要收到的
 bool canSend=false;
 bool canExit = false;
 
 DWORD WINAPI Recvprocess(LPVOID p) {
+    cout << "successfully created RecvProcess" << endl;
     Header header;
     char* recvbuffer = new char[sizeof(header) + MAX_DATA_LENGTH];
     int nowpointer=0;
+    clock_t c=clock();
     while (true) {
         while (recvfrom(server, recvbuffer, sizeof(header) + MAX_DATA_LENGTH, 0, (sockaddr*)&client_addr, &rlen) > 0) {
+            c = clock();
             memcpy(&header, recvbuffer, sizeof(header));
             if (vericksum((u_short*)recvbuffer, sizeof(header) + MAX_DATA_LENGTH) != 0) {
                 cout << "校验和错误" << endl;
                 continue;
             }
             if (header.flag == OVER) {
+                messagepointer = nowpointer - 1;
                 canExit = true;
+                canLoad = true;
                 return 1;
             }
             if (header.seq == SEQWanted&&!canSend) {
+                cout << "成功接收" << header.seq << "号数据包" << endl;
                 canSend = true;
                 memcpy(message + nowpointer, recvbuffer + sizeof(header), header.length);
                 nowpointer += header.length;
             }
             else {
-                //错误的直接丢弃
+                cout << "错误接受" << header.seq << "号数据包，现在需要接收" << SEQWanted << "号数据包" << endl;
             }
+        }
+        if (clock() - c > MAX_TIME&&SEQWanted>0) {
+            messagepointer = nowpointer - 1;
+            canExit = true;
+            canLoad = true;
+            return 1;
         }
     }
     return 1;
 }
 DWORD WINAPI Sendprocess(LPVOID p) {
+    cout << "successfully created SendProcess" << endl;
     Header header;
     char* sendbuffer = new char[sizeof(header)];
+    clock_t c=clock();
     while (true) {
         if (canExit) {
             return 1;
         }
         if (canSend) {
+            header.ack = SEQWanted;
             SEQWanted++;
             if (SEQWanted > SEQSIZE) { SEQWanted = 1; }
-            header.ack = SEQWanted;
+            canSend = false;
             header.checksum = calcksum((u_short*)&header, sizeof(header));
             memcpy(sendbuffer, &header, sizeof(header));
             sendto(server, sendbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen);
+            cout << "成功发送" << header.ack << "号ACK" << endl;
+            c = clock();
+        }
+        else {
+            if (clock() - c > MAX_TIME&&SEQWanted>0) {
+                header.ack = SEQWanted - 1;
+                header.checksum = calcksum((u_short*)&header, sizeof(header));
+                memcpy(sendbuffer, &header, sizeof(header));
+                sendto(server, sendbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen);
+                cout << "成功发送" << header.ack << "号ACK" << endl;
+                c = clock();
+            }
         }
     }
     return 1;

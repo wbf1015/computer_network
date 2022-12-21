@@ -1,0 +1,5 @@
+﻿  源.cpp
+G:\code\computerNetwork\大作业\3-3\server\源.cpp(261,10): warning C4102: “SEND4”: 未引用的标签
+G:\code\computerNetwork\大作业\3-3\server\源.cpp(283,5): warning C4102: “LAST”: 未引用的标签
+G:\code\computerNetwork\大作业\3-3\server\源.cpp(448,6): warning C4102: “SEND3”: 未引用的标签
+  server.vcxproj -> G:\code\computerNetwork\大作业\3-3\server\Debug\server.exe
