@@ -297,29 +297,32 @@ int loadmessage() {
     return 0;
 }
 int SEQWanted = 0;//现在想要收到的
-bool canSend=false;
-bool canExit = false;
+bool canSend=false;//能不能发送现在SEQWanted的ACK信息
+bool canExit = false;//现在能不能退出
 
 DWORD WINAPI Recvprocess(LPVOID p) {
     cout << "successfully created RecvProcess" << endl;
     Header header;
     char* recvbuffer = new char[sizeof(header) + MAX_DATA_LENGTH];
     int nowpointer=0;
-    clock_t c=clock();
+    clock_t c=clock();//如果
     while (true) {
         while (recvfrom(server, recvbuffer, sizeof(header) + MAX_DATA_LENGTH, 0, (sockaddr*)&client_addr, &rlen) > 0) {
             c = clock();
             memcpy(&header, recvbuffer, sizeof(header));
+            //判断校验和
             if (vericksum((u_short*)recvbuffer, sizeof(header) + MAX_DATA_LENGTH) != 0) {
                 cout << "校验和错误" << endl;
                 continue;
             }
+            //收到了退出请求
             if (header.flag == OVER) {
                 messagepointer = nowpointer - 1;
                 canExit = true;
                 canLoad = true;
                 return 1;
             }
+            //成功接收了数据包，是需要的数据包
             if (header.seq == SEQWanted&&!canSend) {
                 cout << "成功接收" << header.seq << "号数据包" << endl;
                 canSend = true;
@@ -327,10 +330,14 @@ DWORD WINAPI Recvprocess(LPVOID p) {
                 nowpointer += header.length;
             }
             else {
+                //可能是因为线程没同步正确
+                //也有可能就是传乱了
                 cout << "错误接受" << header.seq << "号数据包，现在需要接收" << SEQWanted << "号数据包" << endl;
             }
         }
+        //长时间没有收到客户端的信息那就直接退出
         if (clock() - c > MAX_TIME&&SEQWanted>0) {
+            cout << "[exit] 开启自动退出机制" << endl;
             messagepointer = nowpointer - 1;
             canExit = true;
             canLoad = true;
@@ -345,9 +352,17 @@ DWORD WINAPI Sendprocess(LPVOID p) {
     char* sendbuffer = new char[sizeof(header)];
     clock_t c=clock();
     while (true) {
+        //可以退出了
         if (canExit) {
+            header.ack = 0;
+            header.flag = OVER;
+            header.checksum= calcksum((u_short*)&header, sizeof(header));
+            memcpy(sendbuffer, &header, sizeof(header));
+            sendto(server, sendbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen);
+            cout << "成功发送结束信号"<<endl;
             return 1;
         }
+        //如果现在可以发送ACK的话
         if (canSend) {
             header.ack = SEQWanted;
             SEQWanted++;
@@ -360,6 +375,9 @@ DWORD WINAPI Sendprocess(LPVOID p) {
             c = clock();
         }
         else {
+            //如果长时间没有收到自己想要的数据包
+            //就把想要的数据包发过去
+            //因为多线程有的时候可能有点乱
             if (clock() - c > MAX_TIME&&SEQWanted>0) {
                 header.ack = SEQWanted - 1;
                 header.checksum = calcksum((u_short*)&header, sizeof(header));
