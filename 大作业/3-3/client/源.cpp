@@ -10,6 +10,7 @@
 #include<thread>
 #include<vector>
 #include<set>
+#include<mutex>
 #pragma comment(lib,"ws2_32.lib")
 using namespace std;
 //初始化dll
@@ -158,6 +159,7 @@ DWORD WINAPI Sendprocess(LPVOID p);
 int WINDOWStart = 0;//窗口的初始指针
 int WINDOWNow = 0;//下一个应该发的窗口指针
 int canexit = 0;
+mutex mtx;//申请一个锁来保护全局变量
 
 
 int main() {
@@ -176,6 +178,9 @@ int main() {
         }
     }
     printlog();
+    while (true) {
+
+    }
     return 0;
 }
 
@@ -357,35 +362,60 @@ DWORD WINAPI Recvprocess(LPVOID p) {
                 continue;
             }
             //这里还不太确定,关于cache的使用
-            if (stage==3&&cache.find(header.ack)!=cache.end()) {
+            //这里还要再改一改
+            //相当于还在反馈已经完事的那些包，自动屏蔽掉
+            if (stage!=3&&cache.find(header.ack)!=cache.end()) {
                 //避免接受无意义的ACK导致反复进入stage3
                 //只需要调整，发送的位置，没必要调整stage了
+                /*mtx.lock();
                 WINDOWStart = header.ack + 1;
                 WINDOWNow = WINDOWStart;
                 WINDOWSIZE = 1;
+                mtx.unlock();*/
                 break;
             }
             if (header.flag == OVER) {
+                mtx.lock();
                 cout << "[RECV] 收到退出通知，即将退出" << endl;
                 canexit = 1;
+                mtx.unlock();
                 return 1; 
             }
             //加锁？ ack不正确 直接加重复的
             if (header.ack != WINDOWStart) {
+                //int ml;
+                //if ((header.ack+ 1) * MAX_DATA_LENGTH > messagelength) {
+                //    ml = messagelength - (WINDOWStart)*MAX_DATA_LENGTH;
+                //}
+                //else { ml = MAX_DATA_LENGTH; }
+                //header.length = ml;
+                //header.seq = header.ack+1;
+                //memset(sendBuffer, 0, sizeof(header) + MAX_DATA_LENGTH);
+                //memcpy(sendBuffer, &header, sizeof(header));
+                //memcpy(sendBuffer + sizeof(header), message + ((header.ack+1) * MAX_DATA_LENGTH), header.length);
+                //header.checksum = calcksum((u_short*)sendBuffer, sizeof(header) + MAX_DATA_LENGTH);
+                //memcpy(sendBuffer, &header, sizeof(header));
+                ////因为是重发 没必要更新两个map 也不用更新messagepointer
+                //sendto(client, sendBuffer, sizeof(header) + MAX_DATA_LENGTH, 0, (sockaddr*)&router_addr, rlen);
+                //cout << "[send] 完成" << header.ack << "号数据包的重传" << endl;
                 //不相等，其实一个很好的策略就是立刻重塑环境
                 if (header.ack > WINDOWStart) {
                     //相当于你后面的我都收到了，那这个时候立刻收拾起始
                     //但是这个时候不用充值duplicateACK，因为如果发生这个错误是因为多线程导致的
-                    //实际上服务端已经收到包了，所以我只需要重发对应的数据包就可以了
+                    //实际上服务端已经收到包了，所以我只需要把现在要发的改成服务端想要的就行了
+                    mtx.lock();
                     WINDOWStart = header.ack+1;
                     WINDOWNow = WINDOWStart;
                     WINDOWSIZE = 1;
+                    mtx.unlock();
                 }
                 else {
+                    mtx.lock();
                     //这个才是真正的丢包了
                     for (int i = header.ack + 1; i <= WINDOWNow;i++) {
                         ifRecv[i] = false;
                     }
+                    //现在要传输的置位
                     WINDOWStart = header.ack + 1;
                     WINDOWNow = WINDOWStart;
                     WINDOWSIZE = 1;
@@ -398,23 +428,29 @@ DWORD WINAPI Recvprocess(LPVOID p) {
                         cout << "[stage] 进入快速恢复阶段，窗口大小调整为" << WINDOWSIZE << "，窗口起始为"<<WINDOWStart << endl;
                     }
                     cache.insert(header.ack);
+                    mtx.unlock();
                 }
             }
             else {
                 //ACK是正确的
+                mtx.lock();
                 ifRecv[header.ack] = true;
                 cout << "[RECV]成功接受" << header.ack << "号数据包的ACK" << endl;
+                mtx.unlock();
                 //从快速重传恢复过来
                 if (stage == 3) {
+                    mtx.lock();
                     dupACKcount = 0;
                     WINDOWSIZE = ssthresh;//从现在开始就还是进入拥塞避免阶段
                     stage = 2;
                     cout << "[stage] 进入拥塞避免阶段" << endl;
                     cout << "[WINDOW] 现在的窗口起始是：" << WINDOWStart << "窗口大小是:" << WINDOWSIZE << endl;
+                    mtx.unlock();
                     continue;
                 }
                 if (stage == 1) {
                     //相当于翻倍
+                    mtx.lock();
                     WINDOWSIZE = (2 * WINDOWSIZE * MSS) / MAX_DATA_LENGTH;
                     if (WINDOWSIZE >= ssthresh) { 
                         WINDOWSIZE = ssthresh; 
@@ -423,22 +459,27 @@ DWORD WINAPI Recvprocess(LPVOID p) {
                     }
                     if (WINDOWSIZE >= MAX_WINDOWSIZE) { WINDOWSIZE = MAX_WINDOWSIZE; }
                     cout << "[WINDOW] 现在的窗口起始是：" << WINDOWStart << "窗口大小是:" << WINDOWSIZE << endl;
+                    mtx.unlock();
                     continue;
                 }
                 if (stage == 2) {
                     //相当于加一
+                    mtx.lock();
                     WINDOWSIZE = (1 + WINDOWSIZE) * MSS / MAX_DATA_LENGTH;
                     if (WINDOWSIZE >= MAX_WINDOWSIZE) { WINDOWSIZE = MAX_WINDOWSIZE; }
                     cout << "[WINDOW] 现在的窗口起始是：" << WINDOWStart << "窗口大小是:" << WINDOWSIZE << endl;
                     //在这补偿一下吧，要不一直减太难受了
                     ssthresh++;
+                    mtx.unlock();
                 }
             }
         }
     }
 }
 bool CanSend(int s, int n) {
-        if (n - s > WINDOWSIZE) { return false; }
+        if (n - s > WINDOWSIZE) {  
+            return false; 
+        }
         return true;
 }
 
@@ -449,13 +490,17 @@ DWORD WINAPI Sendprocess(LPVOID p) {
     c = clock();
     while (true) {
         //能退出就退出
+        mtx.lock();
         if (canexit==1) {
             cout << "[exit] 退出传输进程" << endl;
+            mtx.unlock();
             break;
         }
+        mtx.unlock();
         if (stage == 3) { //快速重传的处理
             //只要你没收到，我就一直传
             //相当于这里就不是WINDOWNow决定的了
+            mtx.lock();
             header.seq = WINDOWStart;
             memset(sendBuffer, 0, sizeof(header) + MAX_DATA_LENGTH);
             memcpy(sendBuffer, &header, sizeof(header));
@@ -474,47 +519,56 @@ DWORD WINAPI Sendprocess(LPVOID p) {
             sendto(client, sendBuffer, sizeof(header) + MAX_DATA_LENGTH, 0, (sockaddr*)&router_addr, rlen);
             WINDOWNow = WINDOWStart;
             cout << "[send] 快速重传阶段重传"<<header.seq<<"号数据包" << endl;
+            mtx.unlock();
             continue;
         }
         //从状态三退出的后遗症
+        mtx.lock();
         if (WINDOWNow < WINDOWStart) { WINDOWNow = WINDOWStart; }
+        mtx.unlock();
         //看能不能发
         //加锁？
         //这里是WINDOWNow决定的地方
+        mtx.lock();
         if (CanSend(WINDOWStart, WINDOWNow)) {//如果可以发送的话
             //计算发送的长度
-            if (WINDOWNow > messagelength / MAX_DATA_LENGTH) { goto L; }
-            int ml;
-            if ((WINDOWStart + 1) * MAX_DATA_LENGTH > messagelength) {
-                ml = messagelength - (WINDOWStart) * MAX_DATA_LENGTH;
+            if (WINDOWNow > messagelength / MAX_DATA_LENGTH) {
+                if (ifRecv[messagelength / MAX_DATA_LENGTH] == true) {
+                    //可以发over了
+                    header.seq = 0;
+                    header.flag = OVER;
+                    memset(sendBuffer, 0, sizeof(header) + MAX_DATA_LENGTH);
+                    memcpy(sendBuffer, &header, sizeof(header));
+                    header.checksum = calcksum((u_short*)sendBuffer, sizeof(header) + MAX_DATA_LENGTH);
+                    memcpy(sendBuffer, &header, sizeof(header));
+                    //两次转发
+                    sendto(client, sendBuffer, sizeof(header) + MAX_DATA_LENGTH, 0, (sockaddr*)&router_addr, rlen);
+                    sendto(client, sendBuffer, sizeof(header) + MAX_DATA_LENGTH, 0, (sockaddr*)&router_addr, rlen);
+                    cout << "[send] 成功发送结束请求" << endl;
+                }
             }
-            else { ml = MAX_DATA_LENGTH; }
-            header.length = ml;
-            header.seq = WINDOWNow++;//调节WindowNow
-            memset(sendBuffer, 0, sizeof(header) + MAX_DATA_LENGTH);
-            memcpy(sendBuffer, &header, sizeof(header));
-            memcpy(sendBuffer + sizeof(header), message + ((header.seq)*MAX_DATA_LENGTH), ml);
-            header.checksum = calcksum((u_short*)sendBuffer, sizeof(header) + MAX_DATA_LENGTH);
-            memcpy(sendBuffer, &header, sizeof(header));
-            sendto(client, sendBuffer, sizeof(header) + MAX_DATA_LENGTH,0, (sockaddr*)&router_addr, rlen);
-            cout << "[send] 成功发送" << header.seq << "号数据包" << endl;
-L:
-            if (ifRecv[messagelength/MAX_DATA_LENGTH]==true) {
-                //可以发over了
-                header.seq = 0;
-                header.flag = OVER;
+            else {
+                int ml;
+                if ((WINDOWStart + 1) * MAX_DATA_LENGTH > messagelength) {
+                    ml = messagelength - (WINDOWStart)*MAX_DATA_LENGTH;
+                }
+                else { ml = MAX_DATA_LENGTH; }
+                header.length = ml;
+                header.seq = WINDOWNow++;//调节WindowNow
                 memset(sendBuffer, 0, sizeof(header) + MAX_DATA_LENGTH);
                 memcpy(sendBuffer, &header, sizeof(header));
+                memcpy(sendBuffer + sizeof(header), message + ((header.seq) * MAX_DATA_LENGTH), ml);
                 header.checksum = calcksum((u_short*)sendBuffer, sizeof(header) + MAX_DATA_LENGTH);
                 memcpy(sendBuffer, &header, sizeof(header));
-                //两次转发
                 sendto(client, sendBuffer, sizeof(header) + MAX_DATA_LENGTH, 0, (sockaddr*)&router_addr, rlen);
-                sendto(client, sendBuffer, sizeof(header) + MAX_DATA_LENGTH, 0, (sockaddr*)&router_addr, rlen);
-                cout << "[send] 成功发送结束请求" << endl;
-            }
+                cout << "[send] 成功发送" << header.seq << "号数据包" << endl;
+            }   
         }
         //看能不能调整窗口
         //加锁？
+        //
+        mtx.unlock();
+        mtx.lock();
         if (ifRecv.find(WINDOWStart) != ifRecv.end()) {
             if (ifRecv[WINDOWStart] == true) {
                 ifRecv[WINDOWStart] = false;
@@ -527,8 +581,10 @@ L:
             //从状态三退出的后遗症
             if (WINDOWNow < WINDOWStart) { WINDOWNow = WINDOWStart; }
         }
+        mtx.unlock();
         //超时 进入慢启动状态
         if (clock() - c > MAX_TIME) {
+            mtx.lock();
             WINDOWNow = WINDOWStart+1;//在这里调整一下
             WINDOWSIZE = (1 * MSS) / MAX_DATA_LENGTH;
             ssthresh /= 2;
@@ -551,6 +607,7 @@ L:
             //因为是重发 没必要更新两个map 也不用更新messagepointer
             sendto(client, sendBuffer, sizeof(header) + MAX_DATA_LENGTH, 0, (sockaddr*)&router_addr, rlen);
             cout << "[send] 完成" << header.seq << "号数据包的重传" << endl;
+            mtx.unlock();
         }
     }
     return 1;

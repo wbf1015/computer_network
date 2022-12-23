@@ -5,6 +5,7 @@
 #include<iostream>
 #include<windows.h>
 #include<map>
+#include<mutex>
 using namespace std;
 #pragma comment(lib,"ws2_32.lib")
 //初始化dll
@@ -128,7 +129,14 @@ int  receivemessage();
 int  endreceive();
 int loadmessage();
 int tryToDisconnect();
-bool canLoad = false;
+
+
+bool canLoad = false;//是否能够下载文件到本地
+int SEQWanted = 0;//现在想要收到的
+bool canSend = false;//能不能发送现在SEQWanted的ACK信息
+bool canExit = false;//现在能不能退出
+//使用互斥量来保护一些全局变量
+mutex mtx;
 DWORD WINAPI Recvprocess(LPVOID p);
 DWORD WINAPI Sendprocess(LPVOID p);
 
@@ -296,14 +304,13 @@ int loadmessage() {
     cout << "[FINISH]文件已成功下载到本地" << endl;
     return 0;
 }
-int SEQWanted = 0;//现在想要收到的
-bool canSend=false;//能不能发送现在SEQWanted的ACK信息
-bool canExit = false;//现在能不能退出
+
 
 DWORD WINAPI Recvprocess(LPVOID p) {
     cout << "successfully created RecvProcess" << endl;
     Header header;
     char* recvbuffer = new char[sizeof(header) + MAX_DATA_LENGTH];
+    char* sendbuffer = new char[sizeof(header)];
     int nowpointer=0;
     clock_t c=clock();//如果
     while (true) {
@@ -317,32 +324,47 @@ DWORD WINAPI Recvprocess(LPVOID p) {
             }
             //收到了退出请求
             if (header.flag == OVER) {
+                //要访问全局变量了，需要加锁
+                mtx.lock();
                 messagepointer = nowpointer - 1;
                 canExit = true;
                 canLoad = true;
+                mtx.unlock();
                 return 1;
             }
+            //要对全局变量操作，加锁
+            mtx.lock();
             //成功接收了数据包，是需要的数据包
             if (header.seq == SEQWanted&&!canSend) {
                 cout << "成功接收" << header.seq << "号数据包" << endl;
                 canSend = true;
                 memcpy(message + nowpointer, recvbuffer + sizeof(header), header.length);
                 nowpointer += header.length;
+                mtx.unlock();
             }
             else {
                 //可能是因为线程没同步正确
                 //也有可能就是传乱了
                 cout << "错误接受" << header.seq << "号数据包，现在需要接收" << SEQWanted << "号数据包" << endl;
+                mtx.unlock();
+                /*               header.ack = SEQWanted - 1;
+                header.checksum = calcksum((u_short*)&header, sizeof(header));
+                memcpy(sendbuffer, &header, sizeof(header));
+                sendto(server, sendbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen);
+                cout << "成功发送" << header.ack << "号ACK" << endl;*/
             }
         }
+        mtx.lock();
         //长时间没有收到客户端的信息那就直接退出
         if (clock() - c > MAX_TIME&&SEQWanted>0) {
             cout << "[exit] 开启自动退出机制" << endl;
             messagepointer = nowpointer - 1;
             canExit = true;
             canLoad = true;
+            mtx.unlock();
             return 1;
         }
+        mtx.unlock();
     }
     return 1;
 }
@@ -353,6 +375,7 @@ DWORD WINAPI Sendprocess(LPVOID p) {
     clock_t c=clock();
     while (true) {
         //可以退出了
+        mtx.lock();
         if (canExit) {
             header.ack = 0;
             header.flag = OVER;
@@ -360,8 +383,12 @@ DWORD WINAPI Sendprocess(LPVOID p) {
             memcpy(sendbuffer, &header, sizeof(header));
             sendto(server, sendbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen);
             cout << "成功发送结束信号"<<endl;
+            mtx.unlock();
             return 1;
         }
+        mtx.unlock();
+        //加锁
+        mtx.lock();
         //如果现在可以发送ACK的话
         if (canSend) {
             header.ack = SEQWanted;
@@ -373,11 +400,18 @@ DWORD WINAPI Sendprocess(LPVOID p) {
             sendto(server, sendbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen);
             cout << "成功发送" << header.ack << "号ACK" << endl;
             c = clock();
+            //if解锁
+            mtx.unlock();
+            continue;
         }
         else {
             //如果长时间没有收到自己想要的数据包
             //就把想要的数据包发过去
             //因为多线程有的时候可能有点乱
+            //else解锁
+            mtx.unlock();
+            //加锁
+            mtx.lock();
             if (clock() - c > MAX_TIME&&SEQWanted>0) {
                 header.ack = SEQWanted - 1;
                 header.checksum = calcksum((u_short*)&header, sizeof(header));
@@ -385,7 +419,12 @@ DWORD WINAPI Sendprocess(LPVOID p) {
                 sendto(server, sendbuffer, sizeof(header), 0, (sockaddr*)&router_addr, rlen);
                 cout << "成功发送" << header.ack << "号ACK" << endl;
                 c = clock();
+                //if解锁
+                mtx.unlock();
+                continue;
             }
+            //else解锁
+            mtx.unlock();
         }
     }
     return 1;
