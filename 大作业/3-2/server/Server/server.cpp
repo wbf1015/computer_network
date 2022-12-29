@@ -27,7 +27,7 @@ int rlen = sizeof(router_addr);
 u_long blockmode = 0;
 u_long unblockmode = 1;
 const int WINDOWSIZE = 4;//滑动窗口的大小为4
-const int SEQSIZE = 8;//序列号的大小为9(0-8)
+const int SEQSIZE = INT_MAX;//序列号的大小为9(0-8)
 const unsigned char MAX_DATA_LENGTH = 0xff;
 const u_short SOURCEIP = 0x7f01;
 const u_short DESIP = 0x7f01;
@@ -41,7 +41,7 @@ const unsigned char OVER_ACK = 0xA;//OVER=1,FIN=0,ACK=1,SYN=0
 const unsigned char FIN = 0x10;//FIN=1,OVER=0,FIN=0,ACK=0,SYN=0
 const unsigned char FIN_ACK = 0x12;//FIN=1,OVER=0,FIN=0,ACK=1,SYN=0
 const unsigned char FINAL_CHECK = 0x20;//FC=1.FIN=0,OVER=0,FIN=0,ACK=0,SYN=0
-const double MAX_TIME = 0.07 * CLOCKS_PER_SEC;
+const double MAX_TIME = 0.1 * CLOCKS_PER_SEC;
 //数据头
 struct Header {
     u_short checksum; //16位校验和
